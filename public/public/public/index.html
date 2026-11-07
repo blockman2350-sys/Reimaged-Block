@@ -1,1 +1,78 @@
-
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Pix Studio</title>
+<style>
+body{margin:0;font:15px system-ui;background:#0f1117;color:#e8e8ee}
+main{max-width:1000px;margin:auto;padding:24px}
+h1{font-size:22px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+input,select,button{padding:10px 12px;border-radius:8px;border:1px solid #333;background:#1a1d27;color:inherit;font:inherit}
+#prompt{flex:1;min-width:220px}
+button{background:#6d5dfc;border:0;cursor:pointer}button:disabled{opacity:.5}
+button.alt{background:#262a38}
+.stage{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+@media(max-width:760px){.stage{grid-template-columns:1fr}}
+#view{background:#1a1d27;border-radius:12px;min-height:300px;display:flex;align-items:center;justify-content:center;padding:8px}
+#img{max-width:100%;border-radius:8px;transition:filter .2s}
+label{display:block;margin:8px 0 2px;font-size:13px;color:#9aa}
+input[type=range]{width:100%;padding:0}
+#gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:20px}
+#gal img{width:100%;border-radius:8px;cursor:pointer}
+#msg{color:#9aa;min-height:20px}
+</style>
+<main>
+<h1>Pix Studio</h1>
+<div class=row>
+ <input id=prompt placeholder="Describe an image...">
+ <select id=size><option value="768x768">Square</option><option value="1024x640">Wide</option><option value="640x1024">Tall</option></select>
+ <select id=model><option>flux</option><option>turbo</option></select>
+ <button id=gen>Generate</button>
+</div>
+<div id=msg></div>
+<div class=stage>
+ <div id=view><span style="color:#667">Your image appears here</span></div>
+ <div>
+  <b>Alter</b>
+  <div class=row>
+   <input id=tweak placeholder="Add to prompt: e.g. at night, watercolor">
+   <button class=alt id=apply>Apply changes</button>
+   <button class=alt id=remix>New variation</button>
+  </div>
+  <label>Brightness</label><input type=range id=br min=50 max=150 value=100>
+  <label>Contrast</label><input type=range id=co min=50 max=150 value=100>
+  <label>Saturation</label><input type=range id=sa min=0 max=200 value=100>
+  <label>Blur</label><input type=range id=bl min=0 max=8 value=0>
+  <div class=row><button class=alt id=gray>Grayscale</button><button class=alt id=sepia>Sepia</button><button class=alt id=reset>Reset</button><button id=dl>Download</button></div>
+ </div>
+</div>
+<div id=gal></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let base="",seed=1,cur=null,extra={gray:0,sepia:0};
+const rnd=()=>Math.floor(Math.random()*1e6);
+function filt(){return `brightness(${$("br").value}%) contrast(${$("co").value}%) saturate(${$("sa").value}%) blur(${$("bl").value}px) grayscale(${extra.gray}) sepia(${extra.sepia})`}
+function applyF(){if(cur)cur.style.filter=filt()}
+["br","co","sa","bl"].forEach(i=>$(i).oninput=applyF);
+$("gray").onclick=()=>{extra.gray=extra.gray?0:1;applyF()};
+$("sepia").onclick=()=>{extra.sepia=extra.sepia?0:1;applyF()};
+$("reset").onclick=()=>{$("br").value=$("co").value=$("sa").value=100;$("bl").value=0;extra={gray:0,sepia:0};applyF()};
+async function run(prompt){
+  if(!prompt.trim())return;
+  const [w,h]=$("size").value.split("x");
+  $("msg").textContent="Generating...";[$("gen"),$("apply"),$("remix")].forEach(b=>b.disabled=true);
+  try{
+    const r=await fetch(`/api/image?${new URLSearchParams({prompt,w,h,seed,model:$("model").value})}`);
+    if(!r.ok)throw new Error(await r.text());
+    const url=URL.createObjectURL(await r.blob());
+    $("view").innerHTML="";cur=new Image();cur.id="img";cur.src=url;$("view").append(cur);applyF();
+    const t=new Image();t.src=url;t.title=prompt;t.onclick=()=>{cur.src=url;$("prompt").value=prompt};$("gal").prepend(t);
+    $("msg").textContent="";
+  }catch(e){$("msg").textContent="Failed: "+e.message}
+  [$("gen"),$("apply"),$("remix")].forEach(b=>b.disabled=false);
+}
+$("gen").onclick=()=>{base=$("prompt").value;seed=rnd();run(base)};
+$("prompt").onkeydown=e=>e.key=="Enter"&&$("gen").click();
+$("apply").onclick=()=>{if(!base)return;base=base+", "+$("tweak").value;$("prompt").value=base;$("tweak").value="";run(base)};
+$("remix").onclick=()=>{if(!base)return;seed=rnd();run(base)};
+$("dl").onclick=()=>{if(!cur)return;const c=document.createElement("canvas");c.width=cur.naturalWidth;c.height=cur.naturalHeight;const x=c.getContext("2d");x.filter=filt();x.drawImage(cur,0,0);const a=document.createElement("a");a.href=c.toDataURL("image/png");a.download="image.png";a.click()};
+</script>
